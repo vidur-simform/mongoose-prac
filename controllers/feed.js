@@ -1,6 +1,6 @@
 const Post = require('../models/post');
 const User = require('../models/user');
-
+const { ObjectId } = require("mongoose").Types;
 const { validationResult } = require('express-validator/check');
 const { deleteFile } = require('../utils/file');
 
@@ -25,10 +25,15 @@ exports.getPosts = async (req, res, next) => {
 
 exports.getPostsByUser = async (req, res, next) => {
     const { page = 1, perPage = 5 } = req.query;
-    const userId = req.userId;
+    const userId = new ObjectId(req.userId);
     try {
         const postsCount = await Post.find().countDocuments();
-        const posts = await Post.find({creator:userId}).skip((page - 1) * perPage).limit(perPage);
+        const posts = await Post.aggregate([
+            { $match: { creator: userId } },
+            { $skip: (page - 1) * perPage },
+            { $limit: perPage },
+            { $project: { '_id': 0, "title": 1, "imageUrl": 1, "content": 1, "posttype": 1 } }
+        ]);
         res.status(200).json({
             message: 'Fetched posts successfully.',
             posts: posts,
@@ -41,29 +46,65 @@ exports.getPostsByUser = async (req, res, next) => {
         next(err);
     }
 };
+exports.sortByTitle = async (req, res, next) => {
+    const userId = new ObjectId(req.userId);
+    try {
+        const posts = await Post.aggregate([
+            { $match: { creator: userId } },
+            { $sort: { title: 1 } },
+            { $project: { '_id': 0, "title": 1, "imageUrl": 1, "content": 1, "posttype": 1 } }
+        ]);
+        res.status(200).json({
+            message: 'Fetched posts successfully.',
+            posts: posts
+        });
+    }
+    catch (err) {
+        if (!err.statusCode)
+            err.statusCode = 500;
+        next(err);
+    }
+};
+exports.groupByType = async (req, res, next) => {
+    const userId = new ObjectId(req.userId);
+    try {
+        const posts = await Post.aggregate([
+            { $group: { _id: "$posttype", posts: { $push: "$$ROOT" } } },
+            { $project: { "_id": 0,type: "$_id", "posts": 1 } },
+            { $project: { "posts.creator": 0, "posts.createdAt": 0, "posts.updatedAt": 0, "posts.__v": 0 } }
+        ]);
+        res.status(200).json({
+            message: 'Fetched posts by groupped type successfully.',
+            postsbytypes: posts
+        });
+    }
+    catch (err) {
+        if (!err.statusCode)
+            err.statusCode = 500;
+        next(err);
+    }
+};
+exports.searchFromContent = async (req, res, next) => {
+    const userId = new ObjectId(req.userId);
+    const word = req.params.word || "#";
+    try {
+        const posts = await Post.aggregate([
+            { $match: { creator: userId, $text: { $search: word } } },
+            { $project: { '_id': 0, "title": 1, "imageUrl": 1, "content": 1, "posttype": 1 } }
+        ]);
+        res.status(200).json({
+            message: 'Fetched posts successfully.',
+            posts: posts
+        });
+    }
+    catch (err) {
+        if (!err.statusCode)
+            err.statusCode = 500;
+        next(err);
+    }
+};
 
-// exports.getPost = async (req,res,next) => {
-//     const postId = req.params.postId;
-//     try {
-//         const post = await Post.findById(postId);
-//         if (!post) {
-//             const error = new Error('Could not find post.');
-//             error.statusCode = 404;
-//             next(error);
-//             return;
-//         }
-//         res.status(200).json({
-//             message: 'Post fetched.',
-//             post: post
-//         });
-//     }
-//     catch (err) {
-//         if (!err.statusCode)
-//             err.statusCode = 500;
-//         next(err);
-//     }
-// };
-exports.addPost = async (req,res,next) => {
+exports.addPost = async (req, res, next) => {
     const errors = validationResult(req);
     if (!errors.isEmpty()) {
         const error = new Error("Validation failed, entered post data is incorrect.");
@@ -78,13 +119,14 @@ exports.addPost = async (req,res,next) => {
         next(error);
         return;
     }
-    const { title, content } = req.body;
+    const { title, content, posttype } = req.body;
     const { path: imageUrl } = req.file;
     try {
         const post = await Post.create({
             title,
             content,
             imageUrl,
+            posttype,
             creator: req.userId
         });
         const user = await User.findById(req.userId);
@@ -92,21 +134,22 @@ exports.addPost = async (req,res,next) => {
         await user.save();
         res.status(201).json({
             message: 'Post created successfully!',
-            post: post,
+            post: { title, content, posttype, imageUrl: post.imageUrl, _id: post._id},
             creator: { _id: user._id, username: user.username }
         });
     }
     catch (err) {
+        console.log(err);
         if (!err.statusCode)
             err.statusCode = 500;
         next(err);
     }
 };
 
-exports.updatePost = async (req,res,next) => {
+exports.updatePost = async (req, res, next) => {
     const postId = req.params.postId;
     const errors = validationResult(req);
-    const { title, content } = req.body;
+    const { title, content, posttype } = req.body;
     if (!errors.isEmpty()) {
         const error = new Error('Validation failed, entered data is incorrect.');
         error.statusCode = 422;
@@ -132,7 +175,7 @@ exports.updatePost = async (req,res,next) => {
         }
         if (newImageUrl) {
             const errFile = deleteFile(post.imageUrl);
-            if(errFile){
+            if (errFile) {
                 next(errFile);
                 return;
             }
@@ -140,10 +183,11 @@ exports.updatePost = async (req,res,next) => {
         }
         post.title = title;
         post.content = content;
+        post.posttype = posttype;
         const updatedPost = await post.save();
         res.status(200).json({
             message: 'Post updated!',
-            post: updatedPost
+            post: { title:updatedPost.title, content:updatedPost.content, posttype:updatedPost.posttype, imageUrl: updatedPost.imageUrl, _id: updatedPost._id},
         });
     }
     catch (err) {
@@ -153,7 +197,7 @@ exports.updatePost = async (req,res,next) => {
     }
 };
 
-exports.deletePost = async (req,res,next) => {
+exports.deletePost = async (req, res, next) => {
     const postId = req.params.postId;
     try {
         const post = await Post.findById(postId);
@@ -170,7 +214,7 @@ exports.deletePost = async (req,res,next) => {
             return;
         }
         const errFile = deleteFile(post.imageUrl);
-        if(errFile){
+        if (errFile) {
             next(errFile);
             return;
         }

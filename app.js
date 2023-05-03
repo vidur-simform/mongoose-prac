@@ -46,7 +46,7 @@ const fileFilter = (req, file, cb) => {
 
 const app = express();
 
-app.use(express.urlencoded()); 
+app.use(express.json()); 
 app.use( 
     multer({ storage: fileStorage, fileFilter: fileFilter }).single('image')
 );

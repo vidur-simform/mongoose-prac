@@ -10,19 +10,20 @@ const router = express.Router();
 router.get('/posts', isAuth, feedController.getPosts);
 
 //GET /feed/posts/123
-router.get('/posts/userId', isAuth, feedController.getPostsByUser);
+router.get('/myposts', isAuth, feedController.getPostsByUser);
+router.get('/sortByTitle', isAuth, feedController.sortByTitle);
+router.get('/searchFromContent/:word', isAuth, feedController.searchFromContent);
+router.get('/groupByType', isAuth, feedController.groupByType);
 
-//GET /feed/post/123
-// router.get('/post/:postId', isAuth, feedController.getPost);
 
-//POST /feed/addpost
+//POST /feed/post
 router.post('/addpost',
     isAuth,
     [
         body('title')
             .trim()
-            .isLength({ min: 5 })
-            .withMessage('Title length should be atleast 5.'),
+            .isLength({ min: 2 })
+            .withMessage('Title length should be atleast 2.'),
         body('content')
             .trim()
             .isLength({ min: 5 })
@@ -36,8 +37,8 @@ router.put('/post/:postId',
     [
         body('title')
             .trim()
-            .isLength({ min: 5 })
-            .withMessage('Title length should be atleast 5.'),
+            .isLength({ min: 2 })
+            .withMessage('Title length should be atleast 2.'),
         body('content')
             .trim()
             .isLength({ min: 5 })
