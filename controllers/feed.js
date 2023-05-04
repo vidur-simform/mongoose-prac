@@ -86,7 +86,13 @@ exports.groupByType = async (req, res, next) => {
 };
 exports.searchFromContent = async (req, res, next) => {
     const userId = new ObjectId(req.userId);
-    const word = req.params.word || "#";
+    const word = req.query.word;
+    if(!word){
+        const error = new Error('Missing parameter word.');
+        error.statusCode = 422;
+        next(error);
+        return;
+    }
     try {
         const posts = await Post.aggregate([
             { $match: { creator: userId, $text: { $search: word } } },

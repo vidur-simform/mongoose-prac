@@ -12,7 +12,7 @@ router.get('/posts', isAuth, feedController.getPosts);
 //GET /feed/posts/123
 router.get('/myposts', isAuth, feedController.getPostsByUser);
 router.get('/sortByTitle', isAuth, feedController.sortByTitle);
-router.get('/searchFromContent/:word', isAuth, feedController.searchFromContent);
+router.get('/searchFromContent/', isAuth, feedController.searchFromContent);
 router.get('/groupByType', isAuth, feedController.groupByType);
 
 
